@@ -153,14 +153,16 @@ module.exports = class Projection extends Module {
             let val = lineArr[i];
 
             if (typeof val === "string") {
+                val = val.trim();
+
                 // cut off " for texts if present
                 if (val[0] === '"' && val[val.length - 1] === '"') {
-                    val = val.substr(1, val.length - 1);
+                    val = val.substr(1, val.length - 2);
                 }
 
                 val = val.trim();
             }
-
+            
             lineArr[i] = val;
         }
 
