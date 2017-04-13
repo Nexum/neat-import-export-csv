@@ -46,6 +46,7 @@ module.exports = class Projection extends Module {
             let config = this.loadConfig(configName);
             let firstLine = true;
             let lineCount = 0;
+            let inProgress = 0;
 
             lineReader.on('line', (line) => {
                 lineCount++;
@@ -56,15 +57,29 @@ module.exports = class Projection extends Module {
                     return;
                 }
 
+                inProgress++;
                 lineReader.pause();
                 return this.importCsvLine(config, line).then((doc) => {
-                    lineReader.resume();
+                    inProgress--;
+                    // only resume if all others are done
+                    this.log.debug("Saved, check if others are done too, " + inProgress + " transactions remaining")
+                    if(inProgress === 0) {
+                        lineReader.resume();
+                    }
+                }, (err) => {
+                    lineReader.close();
+                    return reject(err);
                 });
             });
 
             lineReader.on('close', () => {
                 this.log.debug("Line Reader Closed, finishing");
-                return resolve();
+                setInterval(() => {
+                    this.log.debug("Checking if done, " + inProgress + " transactions remaining");
+                    if (inProgress === 0) {
+                        return resolve();
+                    }
+                }, 300)
             });
 
             lineReader.on('pause', () => {
@@ -93,11 +108,20 @@ module.exports = class Projection extends Module {
     importCsvLine(config, line) {
         return new Promise((resolve, reject) => {
             return this.getDocFromCsvLine(config, line).then((doc) => {
+
+                if (this.config.debug) {
+                    this.log.debug(doc.toJSON());
+                    return resolve(doc);
+                }
+
                 this.log.debug("Parsed CSV Line, saving...");
-                return doc.save().then(() => {
+                return doc.save(config.saveOptions).then(() => {
                     this.log.debug("Doc saved");
                     return resolve(doc);
-                }, reject);
+                }, (err) => {
+                    this.log.warn(err.errors);
+                    return reject(err);
+                });
             }, reject);
         });
     }
@@ -138,17 +162,22 @@ module.exports = class Projection extends Module {
                     path = paths[this.getRefPathFromCol(col)];
                 }
                 let val = lineArr[i];
+                if (val === "") {
+                    val = undefined;
+                }
 
                 if (!path) {
                     this.log.debug("No path found for path " + col.path);
                 } else {
                     if (path.instance === "Boolean") {
-                        for (let mapped in this.config.booleanMap) {
-                            let v = this.config.booleanMap[mapped];
+                        if (typeof val === "string") {
+                            for (let mapped in this.config.booleanMap) {
+                                let v = this.config.booleanMap[mapped];
 
-                            if (val.toLowerCase() === mapped.toLowerCase()) {
-                                val = v;
-                                break;
+                                if (val.toLowerCase() === mapped.toLowerCase()) {
+                                    val = v;
+                                    break;
+                                }
                             }
                         }
 
@@ -156,8 +185,10 @@ module.exports = class Projection extends Module {
                             val = null;
                         }
                     } else if (path.instance === "Array") {
-                        val = val.split(col.separator || ",");
-                        val = val.filter(v => !!v);
+                        if (typeof val === "string") {
+                            val = val.split(col.separator || ",");
+                            val = val.filter(v => !!v);
+                        }
                     }
                 }
 
@@ -213,14 +244,14 @@ module.exports = class Projection extends Module {
                                 doc.set(refPath, existingSubDoc._id);
                             } else {
                                 this.log.debug("Creating new subdoc");
-                                return subDoc.save().then(() => {
+                                return subDoc.save(config.saveOptions).then(() => {
                                     doc.set(refPath, subDoc._id);
                                 });
                             }
                         });
                     } else {
                         this.log.debug("Creating new subdoc");
-                        return subDoc.save().then(() => {
+                        return subDoc.save(config.saveOptions).then(() => {
                             doc.set(refPath, subDoc._id);
                         });
                     }
