@@ -44,6 +44,7 @@ module.exports = class Projection extends Module {
                 input: fs.createReadStream(path.resolve(path.join(Application.config.root_path, file)))
             });
             let config = this.loadConfig(configName);
+            config.duplicates = [];
             let firstLine = true;
             let lineCount = 0;
             let inProgress = 0;
@@ -59,11 +60,11 @@ module.exports = class Projection extends Module {
 
                 inProgress++;
                 lineReader.pause();
-                return this.importCsvLine(config, line).then((doc) => {
+                return this.importCsvLine(config, line, lineCount).then((doc) => {
                     inProgress--;
                     // only resume if all others are done
-                    this.log.debug("Saved, check if others are done too, " + inProgress + " transactions remaining")
-                    if(inProgress === 0) {
+                    this.log.debug("Saved, check if others are done too, " + inProgress + " transactions remaining");
+                    if (inProgress === 0) {
                         lineReader.resume();
                     }
                 }, (err) => {
@@ -77,6 +78,8 @@ module.exports = class Projection extends Module {
                 setInterval(() => {
                     this.log.debug("Checking if done, " + inProgress + " transactions remaining");
                     if (inProgress === 0) {
+                        this.log.info("Found " + config.duplicates.length + " Duplicates here are the line numbers:");
+                        this.log.info(config.duplicates.join(","));
                         return resolve();
                     }
                 }, 300)
@@ -105,9 +108,23 @@ module.exports = class Projection extends Module {
         });
     }
 
-    importCsvLine(config, line) {
+    importCsvLine(config, line, lineNumber) {
+        let doc;
         return new Promise((resolve, reject) => {
-            return this.getDocFromCsvLine(config, line).then((doc) => {
+            return this.getDocFromCsvLine(config, line).then((docFromCsv) => {
+                doc = docFromCsv;
+                if (config.isDuplicate) {
+                    return config.isDuplicate(doc);
+                } else {
+                    return Promise.resolve(true);
+                }
+            }, reject).then((isDuplicate) => {
+
+                if (isDuplicate) {
+                    this.log.debug("Duplicate found " + lineNumber);
+                    config.duplicates.push(lineNumber);
+                    return resolve();
+                }
 
                 if (this.config.debug) {
                     this.log.debug(doc.toJSON());
@@ -208,6 +225,10 @@ module.exports = class Projection extends Module {
                     }
 
                     doc.set(col.path, val);
+                }
+
+                if (col.required && !val) {
+                    return reject(new Error("Column " + col.label + " with path " + col.path + " is required but was empty!"));
                 }
 
                 resolve();
