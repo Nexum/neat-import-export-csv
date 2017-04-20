@@ -45,6 +45,7 @@ module.exports = class Projection extends Module {
             });
             let config = this.loadConfig(configName);
             config.duplicates = [];
+            config.errors = [];
             let firstLine = true;
             let lineCount = 0;
             let inProgress = 0;
@@ -80,6 +81,12 @@ module.exports = class Projection extends Module {
                     if (inProgress === 0) {
                         this.log.info("Found " + config.duplicates.length + " Duplicates here are the line numbers:");
                         this.log.info(config.duplicates.join(","));
+                        this.log.info("Found " + config.errors.length + " Errors here are the line numbers and the messages:");
+                        for (let i = 0; i < config.errors.length; i++) {
+                            let errObj = config.errors[i];
+                            this.log.info("Line: " + errObj.lineNumber + " Message: " + errObj.err.toString());
+
+                        }
                         return resolve();
                     }
                 }, 300)
@@ -119,9 +126,9 @@ module.exports = class Projection extends Module {
                     return Promise.resolve(true);
                 }
             }, reject).then((isDuplicate) => {
-
                 if (isDuplicate) {
                     this.log.debug("Duplicate found " + lineNumber);
+                    process.stdout.write("D");
                     config.duplicates.push(lineNumber);
                     return resolve();
                 }
@@ -133,13 +140,27 @@ module.exports = class Projection extends Module {
 
                 this.log.debug("Parsed CSV Line, saving...");
                 return doc.save(config.saveOptions).then(() => {
+                    process.stdout.write("S");
                     this.log.debug("Doc saved");
                     return resolve(doc);
                 }, (err) => {
-                    this.log.warn(err.errors);
-                    return reject(err);
+                    process.stdout.write("!");
+                    config.errors.push({
+                        err: err,
+                        lineNumber: lineNumber,
+                        doc: doc
+                    });
+                    return resolve();
                 });
-            }, reject);
+            }, (err) => {
+                process.stdout.write("!");
+                config.errors.push({
+                    err: err,
+                    lineNumber: lineNumber,
+                    doc: doc
+                });
+                return resolve();
+            });
         });
     }
 
