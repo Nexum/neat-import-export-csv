@@ -426,7 +426,14 @@ module.exports = class Projection extends Module {
 
             for (let fileName in data.files) {
                 let filePath = data.files[fileName];
-                info.archive.file(path.join(Application.config.root_path, filePath), {name: "images/" + fileName});
+                filePath = path.join(Application.config.root_path, filePath);
+
+                if (!fs.statSync(filePath).isFile()) {
+                    this.log.warn("File " + filePath + " is not a file, skipping");
+                    continue;
+                }
+
+                info.archive.file(filePath, {name: "images/" + fileName});
             }
         });
     }
