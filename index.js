@@ -367,7 +367,8 @@ module.exports = class Projection extends Module {
                 model: Application.modules[this.config.dbModuleName].getModel(config.model),
                 csv: csvPath,
                 imgDir: imgDir,
-                currentPage: 0
+                currentPage: 0,
+                lastLineNumber: 1 // one because of the header
             };
 
             fs.mkdirSync(tmpDir);
@@ -417,8 +418,16 @@ module.exports = class Projection extends Module {
 
     exportItem(doc, info) {
         return this.getExportDataFromDoc(doc, info.config).then((data) => {
-            this.log.debug("Appendind row to csv");
-            fs.appendFileSync(info.csv, this.getCsvRow(data.data) + this.config.lineSeparator);
+            info.lastLineNumber++;
+            this.log.debug("Appending row " + info.lastLineNumber + " to csv");
+
+            let line = this.getCsvRow(data.data);
+
+            if (!line) {
+                this.log.warn("Found empty csv line " + doc._id);
+            }
+
+            fs.appendFileSync(info.csv, line + this.config.lineSeparator);
 
             if (!data.files || !Object.keys(data.files).length) {
                 return;
