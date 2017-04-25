@@ -428,7 +428,11 @@ module.exports = class Projection extends Module {
                 let filePath = data.files[fileName];
                 filePath = path.join(Application.config.root_path, filePath);
 
-                if (!fs.statSync(filePath).isFile()) {
+                try {
+                    if (!fs.statSync(filePath).isFile()) {
+                        throw new Error("catch me if you can!");
+                    }
+                } catch (e) {
                     this.log.warn("File " + filePath + " is not a file, skipping");
                     continue;
                 }
