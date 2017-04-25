@@ -335,7 +335,7 @@ module.exports = class Projection extends Module {
 
                 info.output.on('close', function () {
                     self.log.debug(info.archive.pointer() + ' total bytes');
-                    return resolve();
+                    return resolve(info);
                 });
 
                 info.archive.pipe(info.output);
