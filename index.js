@@ -7,7 +7,9 @@ const Tools = require("neat-base").Tools;
 const fs = require("fs");
 const path = require("path");
 const Promise = require("bluebird");
+const os = require("os");
 const readline = require('readline');
+const archiver = require('archiver');
 
 module.exports = class Projection extends Module {
 
@@ -17,6 +19,10 @@ module.exports = class Projection extends Module {
             exportconfigpath: "config/importexportcsv",
             colSeparator: ";",
             lineSeparator: "\n",
+            export: {
+                perPage: 10,
+                concurrency: 10
+            },
             booleanMap: {
                 "Ja": true,
                 "Nein": false
@@ -183,7 +189,7 @@ module.exports = class Projection extends Module {
 
                 val = val.trim();
             }
-            
+
             lineArr[i] = val;
         }
 
@@ -311,6 +317,180 @@ module.exports = class Projection extends Module {
 
     getRefPathFromCol(col) {
         return col.path.substr(col.refPath.length + 1); // add 1 because of the . in the path
+    }
+
+    export(configName, query, outFile) {
+        let info = null;
+        let self = this;
+        return this.setupExport(configName, query, outFile).then((tmpInfo) => {
+            info = tmpInfo;
+            this.log.debug("Starting export..");
+            return this.exportAll(tmpInfo);
+        }).then(() => {
+            return new Promise((resolve, reject) => {
+                this.log.debug("Finalizing archive");
+                info.archive.on('error', function (err) {
+                    return reject(err);
+                });
+
+                info.output.on('close', function () {
+                    self.log.debug(info.archive.pointer() + ' total bytes');
+                    return resolve();
+                });
+
+                info.archive.pipe(info.output);
+                info.archive.file(info.csv, {name: "export.csv"});
+                info.archive.finalize();
+            });
+        });
+    }
+
+    setupExport(configName, query, outFile) {
+        return new Promise((resolve, reject) => {
+            let folderName = "Export_" + configName + "_" + (new Date().getTime());
+            let tmpDir = path.join(os.tmpdir(), folderName);
+            let csvPath = path.join(tmpDir, "export.csv");
+            let imgDir = path.join(tmpDir, "images");
+            let config = this.loadConfig(configName);
+            let output = fs.createWriteStream(outFile);
+            let archive = archiver('zip', {
+                store: true
+            });
+            let info = {
+                output: output,
+                archive: archive,
+                tmpDir: tmpDir,
+                folderName: folderName,
+                config: config,
+                query: query,
+                outFile: outFile,
+                model: Application.modules[this.config.dbModuleName].getModel(config.model),
+                csv: csvPath,
+                imgDir: imgDir,
+                currentPage: 0
+            };
+
+            fs.mkdirSync(tmpDir);
+            fs.mkdirSync(imgDir);
+
+            let headerFields = config.fields.map(v => v.label);
+            fs.appendFileSync(info.csv, this.getCsvRow(headerFields) + this.config.lineSeparator);
+
+            return info.model.count(info.query).then((count) => {
+                info.totalCount = count;
+                info.totalPages = Math.ceil(count / this.config.export.perPage);
+                return resolve(info);
+            });
+        });
+    }
+
+    exportAll(info) {
+        return new Promise((resolve, reject) => {
+            if (info.currentPage > info.totalPages) {
+                return resolve();
+            }
+
+            return this.exportPage(info)
+                .then(() => {
+                    this.log.debug("Exported Page", info.currentPage);
+                    info.currentPage++;
+                    return this.exportAll(info);
+                }, reject)
+                .then(resolve, reject)
+        });
+    }
+
+    exportPage(info) {
+        return info.model
+            .find(info.query)
+            .skip(info.currentPage * this.config.export.perPage)
+            .limit(this.config.export.perPage)
+            .populate(info.config.populate || [])
+            .then((docs) => {
+                return Promise.map(docs, (doc) => {
+                    return this.exportItem(doc, info);
+                }, {
+                    concurrency: this.config.export.concurrency
+                });
+            })
+    }
+
+    exportItem(doc, info) {
+        return this.getExportDataFromDoc(doc, info.config).then((data) => {
+            this.log.debug("Appendind row to csv");
+            fs.appendFileSync(info.csv, this.getCsvRow(data.data) + this.config.lineSeparator);
+
+            if (!data.files || !Object.keys(data.files).length) {
+                return;
+            }
+
+            for (let fileName in data.files) {
+                let filePath = data.files[fileName];
+                info.archive.file(path.join(Application.config.root_path, filePath), {name: "images/" + fileName});
+            }
+        });
+    }
+
+    getExportDataFromDoc(doc, config) {
+        let result = {
+            data: null,
+            files: []
+        };
+
+        return Promise.map(config.fields, (col, i) => {
+            // if it is false, just ignore it
+            if (col.export === false) {
+                return resolve();
+            }
+
+            let model = this.getModelForField(config, col);
+            let paths = model.schema.paths;
+            let path = paths[col.path];
+            let exportValPromise = Promise.resolve("");
+
+            if (col.ref) {
+                path = paths[this.getRefPathFromCol(col)];
+            }
+
+            if (col.get) {
+                return col.get(doc);
+            }
+
+            if (path) {
+                if (path.instance === "Boolean") {
+                    let val = doc.get(col.path);
+
+                    for (let label in this.config.booleanMap) {
+                        if (val === this.config.booleanMap[label]) {
+                            exportValPromise = Promise.resolve(label)
+                        }
+                    }
+                } else {
+                    exportValPromise = Promise.resolve(doc.get(col.path));
+                }
+            } else if (col.path) {
+                exportValPromise = Promise.resolve(doc.get(col.path));
+            }
+
+            return exportValPromise;
+        }).then((data) => {
+            result.data = data;
+            if (!config.files) {
+                // no need to get the connected files in this case, just resolve an empty object
+                return Promise.resolve({});
+            }
+
+            return doc.getConnectedFiles();
+        }).then((connectedFiles) => {
+            if (!config.files) {
+                return result;
+            }
+
+            return config.files(doc, connectedFiles);
+        }).then((files) => {
+            result.files = files;
+            return result;
+        });
     }
 
     generateDummy(configName, writeLine) {
