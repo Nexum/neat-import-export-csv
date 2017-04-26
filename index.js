@@ -345,7 +345,7 @@ module.exports = class Projection extends Module {
 
                 info.archive.file(info.csv, {name: "export.csv"});
                 info.archive.finalize();
-                return resolve();
+                return resolve(info);
             });
         });
     }
@@ -359,7 +359,6 @@ module.exports = class Projection extends Module {
             let config = this.loadConfig(configName);
             let archive = archiver(this.config.archiver.method, this.config.archiver.options);
             let info = {
-                output: output,
                 archive: archive,
                 tmpDir: tmpDir,
                 folderName: folderName,
