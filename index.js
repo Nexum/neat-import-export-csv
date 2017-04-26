@@ -19,6 +19,12 @@ module.exports = class Projection extends Module {
             exportconfigpath: "config/importexportcsv",
             colSeparator: ";",
             lineSeparator: "\n",
+            archiver: {
+                method: "zip",
+                options: {
+                    store: true
+                }
+            },
             export: {
                 perPage: 10,
                 concurrency: 10
@@ -320,9 +326,9 @@ module.exports = class Projection extends Module {
     }
 
     export(configName, query, outFile, infoFunc) {
-        infoFunc = infoFunc || function(info) {
+        infoFunc = infoFunc || function (info) {
 
-        };
+            };
         let info = null;
         let self = this;
         return this.setupExport(configName, query, outFile).then((tmpInfo) => {
@@ -356,9 +362,7 @@ module.exports = class Projection extends Module {
             let imgDir = path.join(tmpDir, "images");
             let config = this.loadConfig(configName);
             let output = fs.createWriteStream(outFile);
-            let archive = archiver('zip', {
-                store: true
-            });
+            let archive = archiver(this.config.archiver.method, this.config.archiver.options);
             let info = {
                 output: output,
                 archive: archive,
