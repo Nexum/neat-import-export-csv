@@ -319,11 +319,15 @@ module.exports = class Projection extends Module {
         return col.path.substr(col.refPath.length + 1); // add 1 because of the . in the path
     }
 
-    export(configName, query, outFile) {
+    export(configName, query, outFile, infoFunc) {
+        infoFunc = infoFunc || function(info) {
+
+        };
         let info = null;
         let self = this;
         return this.setupExport(configName, query, outFile).then((tmpInfo) => {
             info = tmpInfo;
+            infoFunc(info);
             this.log.debug("Starting export..");
             return this.exportAll(tmpInfo);
         }).then(() => {
@@ -338,7 +342,6 @@ module.exports = class Projection extends Module {
                     return resolve(info);
                 });
 
-                info.archive.pipe(info.output);
                 info.archive.file(info.csv, {name: "export.csv"});
                 info.archive.finalize();
             });
