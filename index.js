@@ -18,7 +18,7 @@ module.exports = class Projection extends Module {
             dbModuleName: "database",
             exportconfigpath: "config/importexportcsv",
             colSeparator: ";",
-            lineSeparator: "\n",
+            lineSeparator: "\r\n",
             archiver: {
                 method: "zip",
                 options: {
@@ -486,6 +486,14 @@ module.exports = class Projection extends Module {
                             exportValPromise = Promise.resolve(label)
                         }
                     }
+                } else if (path.instance === "Array") {
+                    let val = doc.get(col.path);
+
+                    if (!val) {
+                        val = [];
+                    }
+
+                    exportValPromise = Promise.resolve(val.join(col.separator));
                 } else {
                     exportValPromise = Promise.resolve(doc.get(col.path));
                 }
@@ -551,6 +559,8 @@ module.exports = class Projection extends Module {
 
     escapeForCsv(val) {
         if (typeof val === "string") {
+            // escape double quotes and remove line breaks.
+            val = val.replace(/"/g, '""').replace(/\s/g, ' ');
             val = '"' + val + '"'
         }
 
