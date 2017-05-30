@@ -259,6 +259,10 @@ module.exports = class Projection extends Module {
                         return col.set(doc, val).then(resolve, reject);
                     }
 
+                    if (!col.path && !val) {
+                        return resolve();
+                    }
+
                     doc.set(col.path, val);
                 }
 
