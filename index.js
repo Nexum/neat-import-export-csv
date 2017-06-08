@@ -16,7 +16,7 @@ module.exports = class Projection extends Module {
     static defaultConfig() {
         return {
             dbModuleName: "database",
-            exportconfigpath: "config/importexportcsv",
+            exportconfigpath: "config/importexport",
             colSeparator: ";",
             lineSeparator: "\r\n",
             archiver: {
@@ -367,6 +367,7 @@ module.exports = class Projection extends Module {
                 tmpDir: tmpDir,
                 folderName: folderName,
                 config: config,
+                knownFiles: [],
                 query: query,
                 outFile: outFile,
                 model: Application.modules[this.config.dbModuleName].getModel(config.model),
@@ -451,7 +452,11 @@ module.exports = class Projection extends Module {
                     continue;
                 }
 
-                info.archive.file(filePath, {name: "images/" + fileName});
+
+                if (info.knownFiles.indexOf(fileName) === -1) {
+                    info.archive.file(filePath, {name: "images/" + fileName});
+                    info.knownFiles.push(fileName);
+                }
             }
         });
     }
