@@ -332,7 +332,7 @@ module.exports = class Projection extends Module {
     export(configName, query, outFile, infoFunc) {
         infoFunc = infoFunc || function (info) {
 
-            };
+        };
         let info = null;
         let self = this;
         return this.setupExport(configName, query, outFile).then((tmpInfo) => {
@@ -413,7 +413,7 @@ module.exports = class Projection extends Module {
             .skip(info.currentPage * this.config.export.perPage)
             .limit(this.config.export.perPage)
             .sort({
-                _id: -1
+                _id: 1
             })
             .populate(info.config.populate || [])
             .then((docs) => {
