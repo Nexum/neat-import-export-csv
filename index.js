@@ -293,7 +293,12 @@ module.exports = class Projection extends Module {
                             if (!duplicateQuery) {
                                 duplicateQuery = {};
                             }
-                            duplicateQuery[realSubPath] = subDoc.get(realSubPath);
+                            let realSubDocData = subDoc.get(realSubPath);
+                            if(config.createNewRefOnNotFound && !realSubDocData){
+                                duplicateQuery = null;
+                            } else {
+                                duplicateQuery[realSubPath] = realSubDocData;
+                            }
                         }
                     }
 
