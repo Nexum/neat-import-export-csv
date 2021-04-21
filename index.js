@@ -491,7 +491,12 @@ module.exports = class Projection extends Module {
             }
 
             if (col.get) {
-                return col.get(doc);
+                return Promise.resolve(col.get(doc)).then((val) => {
+                    return {
+                        col: col,
+                        value: val
+                    }
+                })
             }
 
             if (path) {
